@@ -54,7 +54,7 @@ def topics_extraction(text, n_topics = 5):
     tfidf = vec.fit_transform(text)
     nmfModel = NMF(n_topics)
     W = nmfModel.fit_transform(tfidf)
-    return
+    pass
 
 def remove_nan_reviews(data):
     nan_indices = []
@@ -64,7 +64,7 @@ def remove_nan_reviews(data):
             lengths.append(len(line))
         except TypeError:
             nan_indices.append(index)
-            print("Error reading line: {}".format(index))
+    print("Error reading {} lines".format(len(nan_indices)))
     return np.delete(data, nan_indices)
 
 def extract_topics_nmf(text, n_topics = 5):
@@ -129,21 +129,30 @@ def vader(df):
         print()
 
 def graphlab_fun(df):
-    for feature in df.columns:
-        df[feature] = df[feature].astype('str')
+    reviews, features, vals = [], [], []
 
+    for ft_idx in range(tfidf.shape[1]):
+        feature = tfidf.getcol(ft_idx).todok()
+        keys = feature.keys()
+        reviews += [key[0] for key in keys]
+        features += [key[1] for key in keys]
+        vals += feature.values()
 
-    for feature in ['asin', 'reviewText', 'reviewerName']:
-        df[feature] = df[feature].astype('str')
-    sf = graphlab.SFrame(df[['asin', 'overall', 'reviewText', 'reviewerName']], format='dataframe')
+    sf = SFrame({'feature':features, 'review':reviews, 'tfidf':vals})
 
     rec = graphlab.recommender.factorization_recommender.create(sf,
-    user_id='reviewerName', item_id='asin', target='overall', solver='als',
+    user_id='review', item_id='feature', target='tfidf', solver='als',
     side_data_factorization=False)
+
+
+def add_metadata(df):
+    meta = pd.read_csv('metadata.csv')
+    return pd.merge(df, meta, on='asin')
 
 if __name__ == '__main__':
     df = pd.read_csv('one_star.csv')
     reviews = remove_nan_reviews(df.reviewText.values)
     tfidf, tfidf_vectorizer = extract_topics_nmf(reviews)
 
+    #add_metadata(df)
     #print top_features(vec, 10)
