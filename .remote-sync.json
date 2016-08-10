@@ -1,0 +1,18 @@
+{
+  "uploadOnSave": true,
+  "useAtomicWrites": false,
+  "deleteLocal": false,
+  "hostname": "ec2-52-53-204-206.us-west-1.compute.amazonaws.com",
+  "port": "22",
+  "target": "/one_star/code",
+  "ignore": [
+    ".remote-sync.json",
+    ".git/**"
+  ],
+  "keyfile": "/Users/michael/galvanize/investihate/michael-ca.pem",
+  "watch": [
+    "/read_amazon.py"
+  ],
+  "transport": "scp",
+  "username": "ubuntu"
+}
