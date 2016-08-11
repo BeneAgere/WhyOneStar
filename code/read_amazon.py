@@ -8,6 +8,8 @@ import json
 import graphlab
 from graphlab import SFrame
 from scipy.sparse import dok_matrix
+from sklearn.decomposition import TruncatedSVD
+import math
 
 def top_features(vec, n = 10):
     feature_array = np.array(vec.get_feature_names())
@@ -133,9 +135,15 @@ def matrix_to_sframe(tfidf):
 
     return SFrame({'feature':features, 'review':reviews, 'tfidf':vals})
 
-def build_recommender(sf):
+
+
+def build_recommender(sf, reduced_categories):
+    #Convert reduced_categories to an SFrame, then add the review numbers
+    reduced_review_category = SFrame(pd.DataFrame(reduced_categories))
+    reduced_review_category.add_column(graphlab.SArray(df.index.get_values()), name='review')
+
     rec = graphlab.recommender.factorization_recommender.create( sf,
-    user_id='review', item_id='feature', target='tfidf', solver='als', side_data_factorization=False)
+    user_id='review', item_id='feature', target='tfidf', user_data = reduced_review_category, solver='adagrad', side_data_factorization = True)
     return rec
 
 def predict_one(rec, datapoint = SFrame({'feature': [4350], 'review': [430800]}) ):
@@ -157,13 +165,53 @@ def extract_key_categories(df):
     categories = unique_categories(clean_cats)
     item_category_mat = dok_matrix((clean_cats.shape[0], len(categories)))
 
-    test = clean_cats[0]
-    cat_idx = 10
-
     for cat_idx, category in enumerate(clean_cats):
         for item in category:
             idx = categories.index(item)
             item_category_mat[cat_idx, idx] = 1
+
+    # # 55 Components was chosen as the optimal value, explaining 55.03% of the variance, with additional components offer little additional explanatory value.
+
+    # explained_variances = {}
+    # for n in np.arange(5, 200, 10):
+    #     model = TruncatedSVD(n_components=n, n_iter = 10)
+    #     model.fit(item_category_mat)
+    #     print(model.explained_variance_ratio_)
+    #     explained_variances[n] = model.explained_variance_ratio_
+    #
+    # for n in sorted(explained_variances.keys()):
+    #     print str(n) + " components explained " + str(round(np.sum(explained_variances[n])*100,2))+ "% of the variance"
+
+    model = TruncatedSVD(n_components=55, n_iter = 30).fit(item_category_mat)
+    return model, model.transform(item_category_mat)
+
+
+def clean_salesRank_col():
+    # #25% missing values
+    # test = df.salesRank[0]
+    # df.salesRank.apply(clean_salesRank)
+    #
+    # #Got it
+    # df.salesRank.fillna("Blank: 0").replace('{}', "Blank: 0").value_counts()
+    #
+    # str(df.salesRank).strip("{}'").split(': ')[1]
+    #
+    # df.salesRank.fillna("Blank: 0").apply(clean_salesRank)
+    #
+    # ("Blank: 0").strip("{}'").split(': ')[1])
+
+def clean_salesRank_row(row, fill_val = 0):
+    # if math.isnan(row) or type(row) is not str:
+    #     return fill_val
+    try:
+        broad_cat = str(row).strip("{}'").split(': ')[0].strip("'")
+        rank = int(str(row).strip("{}'").split(': ')[1])
+        return (broad_cat, rank)
+    except TypeError, IndexError:
+        return (fill_val, fill_val)
+
+    # broad_cat = df.salesRank.apply(lambda x: str(x).strip("{}'").split(': ')[0].strip("'"))
+    # rank  = df.salesRank.apply(lambda x: (str(x).strip("{}'").split(': '))[1])
 
 def unique_categories(series):
     '''
@@ -189,9 +237,10 @@ def clean_categories(row):
 if __name__ == '__main__':
     df = pd.read_csv('cleaned_one_star.csv')
     reviews = df.reviewText.values
-    tfidf, tfidf_vectorizer = extract_topics_nmf(reviews)
-    extract_key_categories(df)
+    #tfidf, tfidf_vectorizer = extract_topics_nmf(reviews)
+    tsvd_model, reduced_categories = extract_key_categories(df)
+
 
     #sf = matrix_to_sframe(tfidf)
-    sf = load_sframe('tfidf_sframe.csv')
-    rec = build_recommender(sf)
+    sf = graphlab.load_sframe('tfidf_sframe.csv')
+    rec = build_recommender(sf, reduced_categories)
