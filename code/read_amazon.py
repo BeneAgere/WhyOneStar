@@ -6,6 +6,8 @@ from nltk.sentiment import sentiment_analyzer
 import nltk
 import json
 import graphlab
+from graphlab import SFrame
+from scipy.sparse import dok_matrix
 
 def top_features(vec, n = 10):
     feature_array = np.array(vec.get_feature_names())
@@ -56,21 +58,9 @@ def topics_extraction(text, n_topics = 5):
     W = nmfModel.fit_transform(tfidf)
     pass
 
-def remove_nan_reviews(data):
-    nan_indices = []
-    lengths = []
-    for index, line in enumerate(data):
-        try:
-            lengths.append(len(line))
-        except TypeError:
-            nan_indices.append(index)
-    print("Error reading {} lines".format(len(nan_indices)))
-    return np.delete(data, nan_indices)
-
 def extract_topics_nmf(text, n_topics = 5):
     tfidf, tfidf_vectorizer = fit_tfidf(text)
 
-    # Fit the NMF model
     nmf = NMF(n_components=n_topics, random_state=1, alpha=.1, l1_ratio=.5).fit(tfidf)
 
     print("\nTopics in NMF model:")
@@ -128,7 +118,10 @@ def vader(df):
         print('{0}: {1}, '.format(k, ss[k]))
         print()
 
-def graphlab_fun(df):
+def matrix_to_sframe(tfidf):
+    '''
+    When passed a numpy sparse matrix, the function converts it into an SFrame.
+    '''
     reviews, features, vals = [], [], []
 
     for ft_idx in range(tfidf.shape[1]):
@@ -138,21 +131,67 @@ def graphlab_fun(df):
         features += [key[1] for key in keys]
         vals += feature.values()
 
-    sf = SFrame({'feature':features, 'review':reviews, 'tfidf':vals})
+    return SFrame({'feature':features, 'review':reviews, 'tfidf':vals})
 
-    rec = graphlab.recommender.factorization_recommender.create(sf,
-    user_id='review', item_id='feature', target='tfidf', solver='als',
-    side_data_factorization=False)
+def build_recommender(sf):
+    rec = graphlab.recommender.factorization_recommender.create( sf,
+    user_id='review', item_id='feature', target='tfidf', solver='als', side_data_factorization=False)
+    return rec
 
+def predict_one(rec, datapoint = SFrame({'feature': [4350], 'review': [430800]}) ):
+    prediction = "rating:", rec.predict(one_datapoint)[0]
+    print prediction
+    return prediction
 
-def add_metadata(df):
-    meta = pd.read_csv('metadata.csv')
-    return pd.merge(df, meta, on='asin')
+def extract_side_features():
+    side_features = has_reviews[['reviewTime', 'categories', 'price', 'salesRank']]
+    for col in side_features.columns:
+        side_features[col] = str()
+    review_data = SFrame(side_features)
+
+    side_features = has_reviews[['reviewTime', 'categories', 'price', 'salesRank']]
+
+def extract_key_categories(df):
+    cats = df['categories']
+    clean_cats = cats.apply(clean_categories)
+    categories = unique_categories(clean_cats)
+    item_category_mat = dok_matrix((clean_cats.shape[0], len(categories)))
+
+    test = clean_cats[0]
+    cat_idx = 10
+
+    for cat_idx, category in enumerate(clean_cats):
+        for item in category:
+            idx = categories.index(item)
+            item_category_mat[cat_idx, idx] = 1
+
+def unique_categories(series):
+    '''
+    Returns a sorted list with the unique categories in the series.
+    '''
+    categories = []
+    for row in series:
+        for cat in row:
+            categories.append(cat)
+    return sorted(list(set(categories)))
+
+def clean_categories(row):
+    '''
+    When passed a single row of categories, removes all unnecessary whitespace, nested loops, and additional quotation marks and returns a single list of categories.
+    '''
+    items = str(row).strip('[]').split(",")
+    cleaned_items = []
+    for item in items:
+        temp = item.strip("' [],'")
+        cleaned_items.append(temp)
+    return cleaned_items
 
 if __name__ == '__main__':
-    df = pd.read_csv('one_star.csv')
-    reviews = remove_nan_reviews(df.reviewText.values)
+    df = pd.read_csv('cleaned_one_star.csv')
+    reviews = df.reviewText.values
     tfidf, tfidf_vectorizer = extract_topics_nmf(reviews)
+    extract_key_categories(df)
 
-    #add_metadata(df)
-    #print top_features(vec, 10)
+    #sf = matrix_to_sframe(tfidf)
+    sf = load_sframe('tfidf_sframe.csv')
+    rec = build_recommender(sf)
