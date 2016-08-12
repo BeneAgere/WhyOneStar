@@ -135,8 +135,6 @@ def matrix_to_sframe(tfidf):
 
     return SFrame({'feature':features, 'review':reviews, 'tfidf':vals})
 
-
-
 def build_recommender(sf, reduced_categories):
     #Convert reduced_categories to an SFrame, then add the review numbers
     reduced_review_category = SFrame(pd.DataFrame(reduced_categories))
@@ -159,16 +157,16 @@ def extract_side_features():
 
     side_features = has_reviews[['reviewTime', 'categories', 'price', 'salesRank']]
 
-def extract_key_categories(df):
-    cats = df['categories']
-    clean_cats = cats.apply(clean_categories)
-    categories = unique_categories(clean_cats)
-    item_category_mat = dok_matrix((clean_cats.shape[0], len(categories)))
+def extract_key_categories(categories):
+    categories = categories.apply(clean_category_row)
+    category_list = unique(categories)
+    item_category_mat = dok_matrix((categories.shape[0], len(category_list)))
 
-    for cat_idx, category in enumerate(clean_cats):
-        for item in category:
-            idx = categories.index(item)
-            item_category_mat[cat_idx, idx] = 1
+
+    for review_idx, review in enumerate(categories):
+        for cat in review:
+            cat_idx = category_list.index(item)
+            item_category_mat[review_idx, cat_idx] = 1
 
     # # 55 Components was chosen as the optimal value, explaining 55.03% of the variance, with additional components offer little additional explanatory value.
 
@@ -185,7 +183,7 @@ def extract_key_categories(df):
     model = TruncatedSVD(n_components=55, n_iter = 30).fit(item_category_mat)
     return model, model.transform(item_category_mat)
 
-
+# To clean up and try out
 def clean_salesRank_col():
     # #25% missing values
     # test = df.salesRank[0]
@@ -199,7 +197,6 @@ def clean_salesRank_col():
     # df.salesRank.fillna("Blank: 0").apply(clean_salesRank)
     #
     # ("Blank: 0").strip("{}'").split(': ')[1])
-
 def clean_salesRank_row(row, fill_val = 0):
     # if math.isnan(row) or type(row) is not str:
     #     return fill_val
@@ -210,20 +207,18 @@ def clean_salesRank_row(row, fill_val = 0):
     except TypeError, IndexError:
         return (fill_val, fill_val)
 
-    # broad_cat = df.salesRank.apply(lambda x: str(x).strip("{}'").split(': ')[0].strip("'"))
-    # rank  = df.salesRank.apply(lambda x: (str(x).strip("{}'").split(': '))[1])
 
-def unique_categories(series):
+def unique(series):
     '''
     Returns a sorted list with the unique categories in the series.
     '''
-    categories = []
+    collection = []
     for row in series:
-        for cat in row:
-            categories.append(cat)
-    return sorted(list(set(categories)))
+        for item in row:
+            collection.append(item)
+    return sorted(list(set(collection)))
 
-def clean_categories(row):
+def clean_category_row(row):
     '''
     When passed a single row of categories, removes all unnecessary whitespace, nested loops, and additional quotation marks and returns a single list of categories.
     '''
@@ -234,13 +229,37 @@ def clean_categories(row):
         cleaned_items.append(temp)
     return cleaned_items
 
+def label_reduced_categories(reduced_categories, item_category_mat):
+
+    for red_cat_idx in range(reduced_categories.shape[1]):
+        rep_indices = reduced_categories[:,red_cat_idx ].argsort()[-10:]
+        exemplar_subset_mat = item_category_mat[rep_indices]
+
+        print "\nReduced Category Number {}\n".format(red_cat_idx)
+        for review in exemplar_subset_mat:
+            #look_at_one = rep_review_category_mat[0]
+            keys = review.keys()
+            indices = [x[1] for x in keys]
+            cats = []
+            for i in indices:
+                cats.append(category_list[i])
+            print(cats)
+
 if __name__ == '__main__':
     df = pd.read_csv('cleaned_one_star.csv')
     reviews = df.reviewText.values
-    #tfidf, tfidf_vectorizer = extract_topics_nmf(reviews)
-    tsvd_model, reduced_categories = extract_key_categories(df)
+    tfidf, tfidf_vectorizer = extract_topics_nmf(reviews)
 
+    tsvd_model, reduced_categories = extract_key_categories(df.categories)
 
     #sf = matrix_to_sframe(tfidf)
     sf = graphlab.load_sframe('tfidf_sframe.csv')
-    rec = build_recommender(sf, reduced_categories)
+    #rec = build_recommender(sf, reduced_categories)
+    #rec.save('model')
+    rec2 = graphlab.load_model('model')
+
+    # Data pipeline
+    test = df.iloc[0,:]
+    vec = tfidf_vectorizer.transform(test.reviewText)
+    reduced = tsvd_model.transform(vec)
+    rec2.predict(reduced)

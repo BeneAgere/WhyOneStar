@@ -23,7 +23,7 @@ def remove_problem_lines(data, error_rate = False):
             line = line.strip()
             json.loads(line)
         except ValueError:
-            problem_lines.append((index, line))
+            problem_lines.append(index)
             num_errors += 1
             print("Error reading line: {}".format(index))
 

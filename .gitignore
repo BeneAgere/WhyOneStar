@@ -3,3 +3,6 @@ michael-ca.pem
 /data
 /output
 .remote-sync.json
+/webstuffs
+/bootstrap
+/old_bootstrap
