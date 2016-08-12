@@ -10,6 +10,9 @@ from graphlab import SFrame
 from scipy.sparse import dok_matrix
 from sklearn.decomposition import TruncatedSVD
 import math
+from sklearn.cluster import MiniBatchKMeans
+from sklearn import metrics
+from time import time
 
 def top_features(vec, n = 10):
     feature_array = np.array(vec.get_feature_names())
@@ -19,7 +22,6 @@ def top_features(vec, n = 10):
     return top_features
 
 def query(df, query):
-    data = fetch_20newsgroups(subset='train', categories=categories).data
     vectorizer = TfidfVectorizer(stop_words='english')
     vectors = vectorizer.fit_transform(data).toarray()
     words = vectorizer.get_feature_names()
@@ -40,7 +42,7 @@ def print_top_words(model, feature_names, n_top_words):
     print()
 
 def fit_tfidf(text):
-    vectorizer = TfidfVectorizer(stop_words='english', max_df=0.95, min_df=2, max_features = 5000)
+    vectorizer = TfidfVectorizer(stop_words='english', max_df=0.8, min_df=2, max_features = 5000)
     tfidf = vectorizer.fit_transform(text)
     return tfidf, vectorizer
 
@@ -60,15 +62,12 @@ def topics_extraction(text, n_topics = 5):
     W = nmfModel.fit_transform(tfidf)
     pass
 
-def extract_topics_nmf(text, n_topics = 5):
-    tfidf, tfidf_vectorizer = fit_tfidf(text)
-
+def print_topics_nmf(tfidf, n_topics = 5):
     nmf = NMF(n_components=n_topics, random_state=1, alpha=.1, l1_ratio=.5).fit(tfidf)
-
     print("\nTopics in NMF model:")
     tfidf_feature_names = tfidf_vectorizer.get_feature_names()
     print_top_words(nmf, tfidf_feature_names, n_top_words=10)
-    return tfidf, tfidf_vectorizer
+    pass
 
 def dirichlet(text, n_topics = 5):
     tf_vectorizer = CountVectorizer(max_df=0.95, min_df=2, max_features=10000, stop_words='english')
@@ -165,7 +164,7 @@ def extract_key_categories(categories):
 
     for review_idx, review in enumerate(categories):
         for cat in review:
-            cat_idx = category_list.index(item)
+            cat_idx = category_list.index(cat)
             item_category_mat[review_idx, cat_idx] = 1
 
     # # 55 Components was chosen as the optimal value, explaining 55.03% of the variance, with additional components offer little additional explanatory value.
@@ -184,7 +183,7 @@ def extract_key_categories(categories):
     return model, model.transform(item_category_mat)
 
 # To clean up and try out
-def clean_salesRank_col():
+#def clean_salesRank_col():
     # #25% missing values
     # test = df.salesRank[0]
     # df.salesRank.apply(clean_salesRank)
@@ -197,7 +196,7 @@ def clean_salesRank_col():
     # df.salesRank.fillna("Blank: 0").apply(clean_salesRank)
     #
     # ("Blank: 0").strip("{}'").split(': ')[1])
-def clean_salesRank_row(row, fill_val = 0):
+#def clean_salesRank_row(row, fill_val = 0):
     # if math.isnan(row) or type(row) is not str:
     #     return fill_val
     try:
@@ -245,10 +244,47 @@ def label_reduced_categories(reduced_categories, item_category_mat):
                 cats.append(category_list[i])
             print(cats)
 
+def clustering(tfidf, n_components=100, k=25):
+    print("Performing dimensionality reduction using LSA")
+    t0 = time()
+    # Vectorizer results are normalized, which makes KMeans behave as
+    # spherical k-means for better results. Since LSA/SVD results are
+    # not normalized, we have to redo the normalization.
+    svd = TruncatedSVD(n_components)
+    normalizer = Normalizer(copy=False)
+    lsa = make_pipeline(svd, normalizer)
+
+    X = lsa.fit_transform(tfidf)
+
+    print("done in %fs" % (time() - t0))
+
+    explained_variance = svd.explained_variance_ratio_.sum()
+    print("Explained variance of the SVD step: {}%".format(
+        int(explained_variance * 100)))
+
+    km = MiniBatchKMeans(n_clusters=25, init='k-means++', n_init=1,
+                     init_size=1000, batch_size=1000)
+    print("Clustering sparse data with %s" % km)
+    t0 = time()
+    km.fit(X)
+    print("done in %0.3fs" % (time() - t0))
+    print()
+
+    print("Silhouette Coefficient: %0.3f"
+          % metrics.silhouette_score(X, km.labels_, sample_size=1000))
+
+
+    # vectorizer = TfidfVectorizer(max_df=0.5, max_features=5000,
+    #                              min_df=2, stop_words='english',
+    #                              use_idf=True)
+    # X = vectorizer.fit_transform(text)
+
+
 if __name__ == '__main__':
     df = pd.read_csv('cleaned_one_star.csv')
     reviews = df.reviewText.values
-    tfidf, tfidf_vectorizer = extract_topics_nmf(reviews)
+    tfidf, tfidf_vectorizer = fit_tfidf(reviews)
+    print_topics_nmf(tfidf)
 
     tsvd_model, reduced_categories = extract_key_categories(df.categories)
 
@@ -256,10 +292,13 @@ if __name__ == '__main__':
     sf = graphlab.load_sframe('tfidf_sframe.csv')
     #rec = build_recommender(sf, reduced_categories)
     #rec.save('model')
-    rec2 = graphlab.load_model('model')
+    rec = graphlab.load_model('model')
+    recommendations = rec.recommend()
+
+    kmeans_model = graphlab.kmeans.create(sf, num_clusters=25, max_iterations=1000)
 
     # Data pipeline
     test = df.iloc[0,:]
     vec = tfidf_vectorizer.transform(test.reviewText)
     reduced = tsvd_model.transform(vec)
-    rec2.predict(reduced)
+    rec.predict(reduced)
