@@ -40,8 +40,8 @@ def print_top_words(model, feature_names, n_top_words):
             for i in topic.argsort()[ :-n_top_words - 1:-1]]))
     print()
 
-def fit_tfidf(text):
-    vectorizer = TfidfVectorizer(stop_words='english', max_df=0.8, min_df=2, max_features = 5000)
+def fit_tfidf(text, max_feat = 5000):
+    vectorizer = TfidfVectorizer(stop_words='english', max_df=0.8, min_df=2, max_features = max_feat)
     tfidf = vectorizer.fit_transform(text)
     return tfidf, vectorizer
 
@@ -295,16 +295,20 @@ def clean_dfs(dfs, num_features):
                       axis=1)  for df in dfs]
 
 
-# def example_reviews_for_latent_categories(review_matrix):
-#     for col in review_matrix.columns:
-#         a = review_matrix['category_1']
-#         b = np.argsort(a.values)[-10:]
+def example_reviews_for_latent_categories(review_matrix, reviews, n = 10):
+    for col in review_matrix.columns:
+        top_features = review_matrix[col].argsort().values[-10:]
+        print '\n Category {} \n'.format(col)
+        print reviews[top_features]
+        #print review_matrix[col].iloc[top_features]
 
+def top_words_by_latent_category(review_matrix, words):
+    pass
 
 if __name__ == '__main__':
     df = pd.read_csv('cleaned_one_star.csv')
-    #reviews = pd.read_csv('cleaned_one_star.csv').reviewText.values
-    #tfidf, tfidf_vectorizer = fit_tfidf(reviews)
+    reviews = df.reviewText.values
+    tfidf, tfidf_vectorizer = fit_tfidf(reviews, 10000)
     #print_topics_nmf(tfidf)
     tsvd_model, reduced_categories = extract_key_categories(df.categories)
 
@@ -314,8 +318,10 @@ if __name__ == '__main__':
     rec.save('model')
 
     #rec = graphlab.load_model('model')
-    factor_matrix, review_matrix = clean_latent_feature_matrices(rec, num_features = 12)
+    review_matrix, word_matrix = clean_latent_feature_matrices(rec, num_features = 12)
 
+    example_reviews_for_latent_categories(review_matrix, reviews, 10)
+    top_words_by_latent_category(word_matrix, tfidf_vectorizer.get_feature_names())
 
 
     # rec.get_similar_users([457612], k=20)
