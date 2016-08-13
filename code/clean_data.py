@@ -63,6 +63,11 @@ def remove_nan_reviews(data):
     print("{} reviews were empty and not included.".format(len(nan_indices)))
     return np.delete(data, nan_indices), nan_indices
 
+def lemmatize(sentence):
+    from textblob import TextBlob
+    tb = Textblob(sentence)
+    return list(tb.words.lower().lemmatize())
+
 if __name__ == '__main__':
     '''
     Read review and metadata json files to Pandas DataFrames, then export to csv for ease of access.
