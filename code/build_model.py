@@ -3,6 +3,8 @@ import numpy as np
 from sklearn.decomposition import NMF, LatentDirichletAllocation
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from nltk.sentiment import sentiment_analyzer
+from nltk.stem.wordnet import WordNetLemmatizer
+from nltk import word_tokenize
 import nltk
 import json
 import graphlab
@@ -40,8 +42,14 @@ def print_top_words(model, feature_names, n_top_words):
             for i in topic.argsort()[ :-n_top_words - 1:-1]]))
     print()
 
-def fit_tfidf(text, max_feat = 5000):
-    vectorizer = TfidfVectorizer(stop_words='english', max_df=0.8, min_df=2, max_features = max_feat)
+class LemmaTokenizer(object):
+    def __init__(self):
+        self.wnl = WordNetLemmatizer()
+    def __call__(self, doc):
+        return [self.wnl.lemmatize(t) for t in word_tokenize(doc)]
+
+def fit_tfidf(text, kwargs):
+    vectorizer = TfidfVectorizer( stop_words='english', **kwargs)
     tfidf = vectorizer.fit_transform(text)
     return tfidf, vectorizer
 
@@ -55,7 +63,6 @@ def topics_extraction(text, n_topics = 5):
     tfidf_feature_names
     print_top_words(nmf, tfidf_feature_names, 20)
 
-    vec = TfidfVectorizer(stop_words='english', max_features=5000)
     tfidf = vec.fit_transform(text)
     nmfModel = NMF(n_topics)
     W = nmfModel.fit_transform(tfidf)
@@ -107,42 +114,8 @@ def build_recommender(sf, reduced_categories, n_factors=8):
 
 def predict_one(rec, datapoint = SFrame({'feature': [4350], 'review': [430800]}) ):
     prediction = "rating:", rec.predict(one_datapoint)[0]
-    print prediction
+    print(prediction)
     return prediction
-
-def extract_side_features():
-    side_features = has_reviews[['reviewTime', 'categories', 'price', 'salesRank']]
-    for col in side_features.columns:
-        side_features[col] = str()
-    review_data = SFrame(side_features)
-
-    side_features = has_reviews[['reviewTime', 'categories', 'price', 'salesRank']]
-    return side_features
-
-def extract_key_categories(categories, n_categories = 55):
-    categories = categories.apply(clean_category_row)
-    category_list = unique(categories)
-    item_category_mat = dok_matrix((categories.shape[0], len(category_list)))
-
-    for review_idx, review in enumerate(categories):
-        for cat in review:
-            cat_idx = category_list.index(cat)
-            item_category_mat[review_idx, cat_idx] = 1
-
-    # # 55 Components was chosen as the optimal value, explaining 55.03% of the variance, with additional components offer little additional explanatory value.
-
-    # explained_variances = {}
-    # for n in np.arange(5, 200, 10):
-    #     model = TruncatedSVD(n_components=n, n_iter = 10)
-    #     model.fit(item_category_mat)
-    #     print(model.explained_variance_ratio_)
-    #     explained_variances[n] = model.explained_variance_ratio_
-    #
-    # for n in sorted(explained_variances.keys()):
-    #     print str(n) + " components explained " + str(round(np.sum(explained_variances[n])*100,2))+ "% of the variance"
-
-    model = TruncatedSVD(n_components= n_categories, n_iter = 30).fit(item_category_mat)
-    return model, model.transform(item_category_mat)
 
 def clean_salesRank_col():
     # To clean up and try out
@@ -171,43 +144,6 @@ def clean_salesRank_row(row, fill_val = 0):
     # except TypeError, IndexError:
     #     return (fill_val, fill_val)
     pass
-
-def unique(series):
-    '''
-    Returns a sorted list with the unique categories in the series.
-    '''
-    collection = []
-    for row in series:
-        for item in row:
-            collection.append(item)
-    return sorted(list(set(collection)))
-
-def clean_category_row(row):
-    '''
-    When passed a single row of categories, removes all unnecessary whitespace, nested loops, and additional quotation marks and returns a single list of categories.
-    '''
-    items = str(row).strip('[]').split(",")
-    cleaned_items = []
-    for item in items:
-        temp = item.strip("' [],'")
-        cleaned_items.append(temp)
-    return cleaned_items
-
-def label_reduced_categories(reduced_categories, item_category_mat):
-
-    for red_cat_idx in range(reduced_categories.shape[1]):
-        rep_indices = reduced_categories[:,red_cat_idx ].argsort()[-10:]
-        exemplar_subset_mat = item_category_mat[rep_indices]
-
-        print "\nReduced Category Number {}\n".format(red_cat_idx)
-        for review in exemplar_subset_mat:
-            #look_at_one = rep_review_category_mat[0]
-            keys = review.keys()
-            indices = [x[1] for x in keys]
-            cats = []
-            for i in indices:
-                cats.append(category_list[i])
-            print(cats)
 
 def clustering(tfidf, n_components=100, k=25):
     print("Performing dimensionality reduction using LSA")
@@ -248,8 +184,8 @@ def describe_clusters(kmeans_model, df):
         top_rows = cluster_ids.filter_by(centroid_idx, 'cluster_id').sort('distance').head(5).select_column('row_id')
         for exemplar in top_rows.to_numpy():
             if exemplar < 700000:
-                print df.reviewText[exemplar]
-                print
+                print(df.reviewText[exemplar])
+                print()
 
 
     # order_centroids = km.cluster_centers_.argsort()[:, ::-1]
@@ -295,34 +231,54 @@ def clean_dfs(dfs, num_features):
                       axis=1)  for df in dfs]
 
 
-def example_reviews_for_latent_categories(review_matrix, reviews, n = 10):
-    for col in review_matrix.columns:
-        top_features = review_matrix[col].argsort().values[-10:]
-        print '\n Category {} \n'.format(col)
-        print reviews[top_features]
-        #print review_matrix[col].iloc[top_features]
 
-def top_words_by_latent_category(review_matrix, words):
-    pass
+def latent_category_examples(df, labels, n_examples = 10):
+    '''
+    Input: Dataframe containing latent features from factorization recommender, labels for the matrix (either reviews or words), number of examples to return
+    Output: Prints n_examples with the highest latent feature scores for each category
+    '''
+
+    for col in df.columns:
+        top_features = df[col].argsort().values[-n_examples:]
+        print('\n Category {} \n'.format(col))
+        print(labels[top_features])
+        print()
+
+def build_model(df, n_latent_categories, kwargs):
+    #Load the reviews
+    df = pd.read_csv('cleaned_one_star.csv')
+    reviews = df.reviewText.values
+
+    # Create TFDIF Vectorization as an SFrame
+    print("Creating TFIDF Vectorization")
+    tfidf, tfidf_vectorizer = fit_tfidf(reviews, kwargs)
+    #print_topics_nmf(tfidf)
+    sf = matrix_to_sframe(tfidf)
+    #sf = graphlab.load_sframe('tfidf_sframe.csv')
+
+    # Load the dimensionality-reduced product categories
+    reduced_categories = np.load('reduced_categories.npy')
+
+    print("Building recommender")
+    model = build_recommender(sf, reduced_categories, n_latent_categories)
+
+    # Extract latent feature matrices
+    review_matrix, word_matrix = clean_latent_feature_matrices(rec, n_latent_categories)
+    latent_category_examples(review_matrix, reviews, 10)
+    words = np.array(tfidf_vectorizer.get_feature_names())
+    latent_category_examples(word_matrix, words, 10)
+
+    return model, review_matrix, word_matrix
 
 if __name__ == '__main__':
     df = pd.read_csv('cleaned_one_star.csv')
-    reviews = df.reviewText.values
-    tfidf, tfidf_vectorizer = fit_tfidf(reviews, 10000)
-    #print_topics_nmf(tfidf)
-    tsvd_model, reduced_categories = extract_key_categories(df.categories)
+    num_latent_categories = 5
+    kwargs = {'tokenizer':None, 'ngram_range': (1,1), 'min_df': 2, 'max_features': 5000,'max_df': 0.95}
+    rec, review_matrix, word_matrix = build_model(df, num_latent_categories, kwargs)
 
-    #sf = matrix_to_sframe(tfidf)
-    sf = graphlab.load_sframe('tfidf_sframe.csv')
-    rec = build_recommender(sf, reduced_categories, 12)
-    rec.save('model')
 
+    # rec.save('model')
     #rec = graphlab.load_model('model')
-    review_matrix, word_matrix = clean_latent_feature_matrices(rec, num_features = 12)
-
-    example_reviews_for_latent_categories(review_matrix, reviews, 10)
-    top_words_by_latent_category(word_matrix, tfidf_vectorizer.get_feature_names())
-
 
     # rec.get_similar_users([457612], k=20)
 
