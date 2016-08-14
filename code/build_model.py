@@ -276,6 +276,8 @@ if __name__ == '__main__':
     kwargs = {'tokenizer':None, 'ngram_range': (1,1), 'min_df': 2, 'max_features': 5000,'max_df': 0.95}
     rec, review_matrix, word_matrix = build_model(df, num_latent_categories, kwargs)
 
+    top_category = review_matrix.apply(lambda x: argmax(x), axis=1)
+    review_matrix[top_category == 'category_1']
 
     # rec.save('model')
     #rec = graphlab.load_model('model')
