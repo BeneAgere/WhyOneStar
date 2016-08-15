@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from scipy.sparse import dok_matrix
 from sklearn.decomposition import TruncatedSVD
 
@@ -40,10 +41,10 @@ def clean_category_row(row):
         cleaned_items.append(temp)
     return cleaned_items
 
-def extract_key_categories(categories, n_categories = 55):
+def build_item_category_matrix(categories):
     '''
-    Input: Pandas Series containing nested lists of the product categories, number of dimensions to which the categories should be reduced
-    Output: The Truncated SVD model used to reduce the dimensionality of the sparse matrix
+    Input: Pandas Series containing nested lists of the product categories
+    Output: Dictionary of keys sparse matrix with binary labels for each item for each of the nearly 13,000 product categories
     '''
 
     #Clean category row
@@ -54,13 +55,21 @@ def extract_key_categories(categories, n_categories = 55):
     item_category_mat = dok_matrix((categories.shape[0], len(category_list)))
 
     # Build the dictionary of keys sparse matrix from the categories matrix
-    for review_idx, review in enumerate(cats):
+    for review_idx, review in enumerate(categories):
         for cat in review:
             cat_idx = category_list.index(cat)
             item_category_mat[review_idx, cat_idx] = 1
 
+    return item_category_mat
+
+def extract_key_categories(dok_matrix, n_categories = 55):
+    '''
+    Input: Dictionary of keys sparse matrix containing item-category binary values, number of dimensions to which the categories should be reduced
+    Output: The Truncated SVD model used to reduce the dimensionality of the sparse matrix, dimensionality-reduced matrix
+    '''
+
     # Build the tsvd model and fit it to the item_category_matrix
-    tsvd = TruncatedSVD(n_components= n_categories, n_iter = 100).fit(item_category_mat)
+    tsvd = TruncatedSVD(n_components= n_categories, n_iter = 100).fit(dok_matrix)
 
     # Use the tsvd model to reduce the categories matrix down to the number of dimensions specified
     key_categories = model.transform(item_category_mat)
@@ -75,22 +84,25 @@ def find_optimal_number_of_categories(item_category_mat, low, high, step):
 
     55 Components was chosen as the optimal value, explaining 55.03% of the variance, with additional components offer little additional explanatory value.
     '''
-    explained_variances = {}
+    tot_explained_variances = {}
+    min_explained_variances = {}
     for n in np.arange(low, high, step):
         model = TruncatedSVD(n_components=n, n_iter = 10)
         model.fit(item_category_mat)
-        print(model.explained_variance_ratio_)
-        explained_variances[n] = model.explained_variance_ratio_
-
+        tot_explained_variances[n] = np.sum( model.explained_variance_ratio_)
+        tot_explained_variances[n] = np.min( model.explained_variance_ratio_)
 
     for n in sorted(explained_variances.keys()):
-        print str(n) + " components explained " + str(round(np.sum(explained_variances[n])*100,2))+ "% of the variance"
-    return explained_variances
+        print(str(n) + " components explained " + str(round(tot_explained_variances[n]*100,2))+ "% of the variance. The marginal component explained " + str(round(min_explained_variances[n]*100,2))+ "% of the variance.")
+    return tot_explained_variances
 
 if __name__ == "__main__":
     df = pd.read_csv('cleaned_one_star.csv')
     print("Reducing category features")
-    tsvd_model, reduced_categories = extract_key_categories(df.categories)
+    item_category_mat = build_item_category_matrix(df.categories)
+    find_optimal_number_of_categories(item_category_mat, 15, 70, 5)
+
+    #tsvd_model, reduced_categories = extract_key_categories(item_category_mat)
 
     # Save reduced categories to file
-    np.save('reduced_categories', reduced_categories)
+    np.save('reduced_categories_2', reduced_categories)

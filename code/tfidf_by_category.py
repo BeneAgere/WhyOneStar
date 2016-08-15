@@ -3,11 +3,13 @@ import numpy as np
 from nltk.stem.wordnet import WordNetLemmatizer
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.decomposition import NMF
+import string
 
 class LemmaTokenizer(object):
     def __init__(self):
         self.wnl = WordNetLemmatizer()
     def __call__(self, doc):
+        without_punctuation = s.translate(string.maketrans("",""), string.punctuation)
         return [self.wnl.lemmatize(t) for t in word_tokenize(doc)]
 
 def print_top_words(model, feature_names, n_top_words):
@@ -68,7 +70,7 @@ def find_topics_by_category(reviews, top_category):
             counts_vectorizers_by_category[cat] = (counts, vectorizer, nmf)
             print_top_words(nmf, words, 10)
         except:
-            print "No nonzero tfidf features for category {}".format(cat)
+            print "\n No nonzero tfidf features for category {}".format(cat)
     return counts_vectorizers_by_category
 
 if __name__ == '__main__':
