@@ -48,10 +48,16 @@ class LemmaTokenizer(object):
     def __call__(self, doc):
         return [self.wnl.lemmatize(t) for t in word_tokenize(doc)]
 
-def fit_tfidf(text, kwargs):
-    vectorizer = TfidfVectorizer( stop_words='english', **kwargs)
-    tfidf = vectorizer.fit_transform(text)
-    return tfidf, vectorizer
+def fit_vectorizer(text, kwargs, type='tfidf'):
+    if type == 'tfidf':
+        vectorizer = TfidfVectorizer(**kwargs)
+        counts = vectorizer.fit_transform(text)
+    elif type == 'count':
+        vectorizer = CountVectorizer(**kwargs)
+        counts = vectorizer.fit_transform(text)
+    else:
+        counts, vectorizer = [], []
+    return counts, vectorizer
 
 def topics_extraction(text, n_topics = 5):
     nmfModel = NMF(n_components=5, random_state=1, alpha=.1, l1_ratio=.5)
@@ -244,16 +250,21 @@ def latent_category_examples(df, labels, n_examples = 10):
         print(labels[top_features])
         print()
 
-def build_model(df, n_latent_categories, kwargs):
+def label_top_category(row):
+    if max(row.values) == 0.0:
+        return 'None'
+    else:
+        return np.argmax(row)
+
+def build_model(df, n_latent_categories, vec_type, kwargs):
     #Load the reviews
-    df = pd.read_csv('cleaned_one_star.csv')
     reviews = df.reviewText.values
 
     # Create TFDIF Vectorization as an SFrame
     print("Creating TFIDF Vectorization")
-    tfidf, tfidf_vectorizer = fit_tfidf(reviews, kwargs)
+    counts, vectorizer = fit_vectorizer(reviews, kwargs, vec_type)
     #print_topics_nmf(tfidf)
-    sf = matrix_to_sframe(tfidf)
+    sf = matrix_to_sframe(counts)
     #sf = graphlab.load_sframe('tfidf_sframe.csv')
 
     # Load the dimensionality-reduced product categories
@@ -263,21 +274,25 @@ def build_model(df, n_latent_categories, kwargs):
     model = build_recommender(sf, reduced_categories, n_latent_categories)
 
     # Extract latent feature matrices
-    review_matrix, word_matrix = clean_latent_feature_matrices(rec, n_latent_categories)
+    review_matrix, word_matrix = clean_latent_feature_matrices(model, n_latent_categories)
     latent_category_examples(review_matrix, reviews, 10)
-    words = np.array(tfidf_vectorizer.get_feature_names())
+    words = np.array(vectorizer.get_feature_names())
     latent_category_examples(word_matrix, words, 10)
 
-    return model, review_matrix, word_matrix
+    return model, review_matrix, word_matrix, vectorizer, counts
 
 if __name__ == '__main__':
     df = pd.read_csv('cleaned_one_star.csv')
     num_latent_categories = 5
-    kwargs = {'tokenizer':None, 'ngram_range': (1,1), 'min_df': 2, 'max_features': 5000,'max_df': 0.95}
-    rec, review_matrix, word_matrix = build_model(df, num_latent_categories, kwargs)
+    kwargs = {'stop_words':'english', 'tokenizer':None, 'ngram_range': (1,3), 'min_df': 4, 'max_features': 10000,'max_df': 0.95, 'binary':True}
+    rec, review_matrix, word_matrix, vectorizer, counts = build_model(df, num_latent_categories, 'count', kwargs)
+    rec.save('trigrams_model')
 
-    top_category = review_matrix.apply(lambda x: argmax(x), axis=1)
-    review_matrix[top_category == 'category_1']
+    #top_category = review_matrix.apply(label_top_category, axis=1)
+
+    #subset = review_matrix[top_category == 'category_3']
+    #latent_category_examples(subset, reviews, 10)
+
 
     # rec.save('model')
     #rec = graphlab.load_model('model')
