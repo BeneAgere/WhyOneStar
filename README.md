@@ -1,7 +1,7 @@
 # WhyOneStar?
 Galvanize Data Science Immersive Capstone
 
-Curious what signal there might be in the deafening noise of angry customers? WhyOneStar identifies latent features from hundreds of thousands of customer complaints, then categorizes new reviews according to these categories, in addition to providing sentiment analysis, subjectivity measures, and comparisons to other products within the same category. Understanding what does (and doesn't!) make your customers happy has never been so easy.
+Curious what your critical customers really think? WhyOneStar quickly and accurately identifies latent features from hundreds of thousands of customer complaints, then assigns new reviews according to these categories. The platform then also provides sentiment analysis and subjectivity measures. Understanding what does (and doesn't!) make your customers happy has never been so easy.
 
 Technical Details:
-Built using a GraphLab Factorization Recommender on the TFIDF featurization of review text. Categories are controlled using side data factorization on the category type, which was identified through Truncated SVD perform dimensionality reduction from 13,000+ categories on Amazon to 55 category types. Sentiment and subjectivity analysis were performed using TextBlob.
+Built using dimensionality reduction and clustering on 13,000 unique product categories, then performing separate TF-IDF featurization and non-negative matrix factorization to extract latent features within each product category cluster across 700,000 total reviews. All processing was done using an EC2 AWS instance. Words were processed using the WordNet Lemmatizer, and sentiment and subjectivity analysis were performed using TextBlob.

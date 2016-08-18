@@ -3,11 +3,19 @@ import json
 import gzip
 
 def load_json(filepath):
+    '''
+    Input: Filepath of JSON file
+    Output Dataframe containing JSON data
+    '''
     data = read_file(filepath)
     clean_data = remove_problem_lines(data)
     return read_json(data)
 
 def read_file(filepath):
+    '''
+    Input: Filepath
+    Output: Lines read from file
+    '''
     with open(filepath) as f:
         data = f.readlines()
     return data
@@ -34,17 +42,30 @@ def remove_problem_lines(data, error_rate = False):
         data.pop(index)
     return data
 
-def read_json(data):
-    data = map(lambda x: x.rstrip(), data)
-    data_json_str = "[" + ",".join(data) + "]"
+def read_json(json_file):
+    '''
+    Input: JSON file
+    Output: Pandas DataFrame containing values from JSON file
+    '''
+    json_file = map(lambda x: x.rstrip(), data)
+    data_json_str = "[" + ",".join(json_file) + "]"
     return pd.read_json(data_json_str)
 
 def parse_gzip(path):
+    '''
+    Helper function for getDF
+    Input: filepath
+    Output: A generator containing the lines in the given file.
+    '''
     g = gzip.open(path, 'rb')
     for l in g:
         yield eval(l)
 
 def getDF(path):
+    '''
+    Input: Filepath of gzip containing a dataframe
+    Output: The unzipped dataframe
+    '''
     i = 0
     df = {}
     for d in parse_gzip(path):
@@ -53,6 +74,10 @@ def getDF(path):
     return pd.DataFrame.from_dict(df, orient='index')
 
 def remove_nan_reviews(data):
+    '''
+    Input: Numpy array of reviews
+    Output: Numpy array of reviews with all blank entries removed
+    '''
     nan_indices = []
     lengths = []
     for index, line in enumerate(data):
@@ -62,11 +87,6 @@ def remove_nan_reviews(data):
             nan_indices.append(index)
     print("{} reviews were empty and not included.".format(len(nan_indices)))
     return np.delete(data, nan_indices), nan_indices
-
-def lemmatize(sentence):
-    from textblob import TextBlob
-    tb = Textblob(sentence)
-    return list(tb.words.lower().lemmatize())
 
 if __name__ == '__main__':
     '''
